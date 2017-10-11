@@ -31,26 +31,21 @@ def test_generate_entity_id_given_keys():
             'test.another_entity']) == 'test.overwrite_hidden_true'
 
 
-def test_async_update_support(event_loop):
+def test_async_update_support(hass):
     """Test async update getting called."""
     sync_update = []
     async_update = []
 
     class AsyncEntity(entity.Entity):
-        hass = MagicMock()
         entity_id = 'sensor.test'
 
         def update(self):
             sync_update.append([1])
 
     ent = AsyncEntity()
-    ent.hass.loop = event_loop
+    ent.hass = hass
 
-    @asyncio.coroutine
-    def test():
-        yield from ent.async_update_ha_state(True)
-
-    event_loop.run_until_complete(test())
+    hass.loop.run_until_complete(ent.async_update_ha_state(True))
 
     assert len(sync_update) == 1
     assert len(async_update) == 0
@@ -62,7 +57,7 @@ def test_async_update_support(event_loop):
 
     ent.async_update = async_update_func
 
-    event_loop.run_until_complete(test())
+    hass.loop.run_until_complete(ent.async_update_ha_state(True))
 
     assert len(sync_update) == 1
     assert len(async_update) == 1
@@ -196,3 +191,25 @@ def test_warn_slow_update_with_exception(hass):
         assert mock_call().cancel.called
 
         assert update_call
+
+
+@asyncio.coroutine
+def test_async_schedule_update_ha_state(hass):
+    """Warn we log when entity update takes a long time and trow exception."""
+    update_call = False
+
+    @asyncio.coroutine
+    def async_update():
+        """Mock async update."""
+        nonlocal update_call
+        update_call = True
+
+    mock_entity = entity.Entity()
+    mock_entity.hass = hass
+    mock_entity.entity_id = 'comp_test.test_entity'
+    mock_entity.async_update = async_update
+
+    mock_entity.async_schedule_update_ha_state(True)
+    yield from hass.async_block_till_done()
+
+    assert update_call is True
